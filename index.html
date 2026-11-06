@@ -585,41 +585,46 @@
         ];
 
         // --- SYNCHRONISATION EN DIRECT AVEC LE TABLEUR GOOGLE SHEETS ---
-        async function fetchWorkshopSheetCount(workshop) {
-            if (!workshop.sheetId) return;
+async function fetchWorkshopSheetCount(workshop) {
+    if (!workshop.sheetId) return;
 
-            workshop.isLoading = true;
-            try {
-                const url = `https://docs.google.com/spreadsheets/d/${workshop.sheetId}/gviz/tq?tqx=out:json&gid=${workshop.gid || '0'}`;
-                const res = await fetch(url);
+    workshop.isLoading = true;
+    try {
+        const url = `https://docs.google.com/spreadsheets/d/${workshop.sheetId}/gviz/tq?tqx=out:json&gid=${workshop.gid || '0'}`;
+        const res = await fetch(url);
+        
+        if (res.ok) {
+            const raw = await res.text();
+            const jsonStr = raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
+            const data = JSON.parse(jsonStr);
+            
+            const rows = data.table.rows || [];
+            let realParticipants = 0;
+
+            rows.forEach((r, index) => {
+                // Ignore explicitement la première ligne (les en-têtes du tableau)
+                if (index === 0) return;
+
+                const c = r.c;
+                if (!c) return;
+                const col0 = c[0] && c[0].v !== null ? String(c[0].v).trim() : '';
+                const col1 = c[1] && c[1].v !== null ? String(c[1].v).trim() : '';
                 
-                if (res.ok) {
-                    const raw = await res.text();
-                    const jsonStr = raw.substring(raw.indexOf('{'), raw.lastIndexOf('}') + 1);
-                    const data = JSON.parse(jsonStr);
-                    
-                    const rows = data.table.rows || [];
-                    let realParticipants = 0;
-
-                    rows.forEach(r => {
-                        const c = r.c;
-                        if (!c) return;
-                        const col0 = c[0] && c[0].v ? String(c[0].v).trim() : '';
-                        const col1 = c[1] && c[1].v ? String(c[1].v).trim() : '';
-                        if (col0.length > 0 || col1.length > 0) {
-                            realParticipants++;
-                        }
-                    });
-
-                    workshop.count = realParticipants;
-                    workshop.lastSync = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                // Compte uniquement si du texte est présent dans la case Nom ou Prénom
+                if (col0.length > 0 || col1.length > 0) {
+                    realParticipants++;
                 }
-            } catch (err) {
-                console.warn(`Erreur lors de la synchronisation de ${workshop.title}:`, err);
-            } finally {
-                workshop.isLoading = false;
-            }
+            });
+
+            workshop.count = realParticipants;
+            workshop.lastSync = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
         }
+    } catch (err) {
+        console.warn(`Erreur lors de la synchronisation de ${workshop.title}:`, err);
+    } finally {
+        workshop.isLoading = false;
+    }
+}
 
         async function refreshAllSheets() {
             showToast("Actualisation des données Google Sheets...");
